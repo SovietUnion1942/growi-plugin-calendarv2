@@ -56,33 +56,7 @@ function shiftMonth(yearMonth: string, diff: number) {
 }
 
 // ---- カレンダー表示コンポーネント(ここが変更点) ----
-
-function CalendarSummary() {
-  const { react } = growiFacade;
-  const { useState, useEffect } = react;
-
-  const [yearMonth, setYearMonth] = useState(getCurrentYearMonth());
-  const [events, setEvents] = useState([] as { date: string; title: string }[]);
-
-  useEffect(() => {
-    fetchEventsForMonth(yearMonth).then(setEvents);
-  }, [yearMonth]);
-
-  const [year, month] = yearMonth.split('-');
-
-  return react.createElement('div', { style: { border: '1px solid #ccc', padding: '1em', borderRadius: '8px' } },
-    react.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: '0.5em', marginBottom: '0.5em' } },
-      react.createElement('button', { onClick: () => setYearMonth(shiftMonth(yearMonth, -1)) }, '<'),
-      react.createElement('button', { onClick: () => setYearMonth(shiftMonth(yearMonth, +1)) }, '>'),
-      react.createElement('strong', {}, `${year}年${parseInt(month)}月`)
-    ),
-    events.length === 0
-      ? react.createElement('p', {}, 'この月のイベントはありません')
-      : react.createElement('ul', {},
-          events.map((e: { date: string; title: string }) => react.createElement('li', { key: e.date }, `${e.date}: ${e.title}`))
-        )
-  );
-  // 指定した年月の週×曜日グリッドを作る
+// 指定した年月の週×曜日グリッドを作る
 function getCalendarGrid(yearMonth: string) {
   const [y, m] = yearMonth.split('-').map(Number);
   const firstDay = new Date(y, m - 1, 1);
@@ -125,6 +99,66 @@ function formatDate(d: Date) {
 }
 
 const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
+
+function CalendarSummary() {
+  const { react } = growiFacade;
+  const { useState, useEffect } = react;
+
+  const [yearMonth, setYearMonth] = useState(getCurrentYearMonth());
+  const [events, setEvents] = useState([] as { date: string; title: string }[]);
+
+  useEffect(() => {
+    fetchEventsForMonth(yearMonth).then(setEvents);
+  }, [yearMonth]);
+
+  const [year, month] = yearMonth.split('-');
+  const weeks = getCalendarGrid(yearMonth);
+
+  // 日付ごとにイベントをまとめておく
+  const eventsByDate: Record<string, string[]> = {};
+  events.forEach((e: { date: string; title: string }) => {
+    eventsByDate[e.date] ??= [];
+    eventsByDate[e.date].push(e.title);
+  });
+
+  const cellStyle = {
+    border: '1px solid #ddd',
+    verticalAlign: 'top',
+    padding: '4px',
+    width: '14.28%',
+    height: '70px',
+  };
+
+  return react.createElement('div', { style: { border: '1px solid #ccc', padding: '1em', borderRadius: '8px' } },
+    react.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: '0.5em', marginBottom: '0.5em' } },
+      react.createElement('button', { onClick: () => setYearMonth(shiftMonth(yearMonth, -1)) }, '<'),
+      react.createElement('button', { onClick: () => setYearMonth(shiftMonth(yearMonth, +1)) }, '>'),
+      react.createElement('strong', {}, `${year}年${parseInt(month)}月`)
+    ),
+    react.createElement('table', { style: { width: '100%', borderCollapse: 'collapse' } },
+      react.createElement('thead', {},
+        react.createElement('tr', {},
+          WEEKDAY_LABELS.map((label: string) =>
+            react.createElement('th', { key: label, style: { padding: '4px', width: '14.28%' } }, label)
+          )
+        )
+      ),
+      react.createElement('tbody', {},
+        weeks.map((week: { date: string; day: number; inMonth: boolean }[], wi: number) =>
+          react.createElement('tr', { key: wi },
+            week.map(cell =>
+              react.createElement('td', { key: cell.date, style: cellStyle },
+                react.createElement('div', { style: { opacity: cell.inMonth ? 1 : 0.3, fontWeight: 'bold' } }, cell.day),
+                (eventsByDate[cell.date] ?? []).map((title: string, i: number) =>
+                  react.createElement('div', { key: i, style: { fontSize: '0.75em', background: '#e0f0ff', borderRadius: '4px', padding: '2px 4px', marginTop: '2px' } }, title)
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  );
 }
 
 // ---- Markdownレンダラーへのフック ----
