@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+"use strict";
 const activate = () => {
     console.log('[growi-plugin-calendar] activated!');
     hookMarkdownRenderer();
 };
-// ---- イベントデータ取得・パース ----
+// ---- イベントデータ取得・パース(変更なし) ----
 async function fetchAllEvents() {
     const res = await fetch('/_api/v3/pages/list?path=' + encodeURIComponent('/イベント/決定済みイベント保管場所'), { credentials: 'include' });
     const listData = await res.json();
@@ -37,7 +37,6 @@ async function fetchEventsForMonth(yearMonth) {
     const all = await fetchAllEvents();
     return all.filter(e => e.date.startsWith(yearMonth));
 }
-// ---- 年月操作ユーティリティ ----
 function getCurrentYearMonth() {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -47,35 +46,36 @@ function shiftMonth(yearMonth, diff) {
     const d = new Date(y, m - 1 + diff, 1);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
-// ---- カレンダー表示コンポーネント ----
+// ---- カレンダー表示コンポーネント(ここが変更点) ----
 function CalendarSummary() {
+    const { react } = growiFacade;
+    const { useState, useEffect } = react;
     const [yearMonth, setYearMonth] = useState(getCurrentYearMonth());
     const [events, setEvents] = useState([]);
     useEffect(() => {
         fetchEventsForMonth(yearMonth).then(setEvents);
     }, [yearMonth]);
     const [year, month] = yearMonth.split('-');
-    return React.createElement('div', { style: { border: '1px solid #ccc', padding: '1em', borderRadius: '8px' } }, React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: '0.5em', marginBottom: '0.5em' } }, React.createElement('button', { onClick: () => setYearMonth(shiftMonth(yearMonth, -1)) }, '<'), React.createElement('button', { onClick: () => setYearMonth(shiftMonth(yearMonth, +1)) }, '>'), React.createElement('strong', {}, `${year}年${parseInt(month)}月`)), events.length === 0
-        ? React.createElement('p', {}, 'この月のイベントはありません')
-        : React.createElement('ul', {}, events.map(e => React.createElement('li', { key: e.date }, `${e.date}: ${e.title}`))));
+    return react.createElement('div', { style: { border: '1px solid #ccc', padding: '1em', borderRadius: '8px' } }, react.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: '0.5em', marginBottom: '0.5em' } }, react.createElement('button', { onClick: () => setYearMonth(shiftMonth(yearMonth, -1)) }, '<'), react.createElement('button', { onClick: () => setYearMonth(shiftMonth(yearMonth, +1)) }, '>'), react.createElement('strong', {}, `${year}年${parseInt(month)}月`)), events.length === 0
+        ? react.createElement('p', {}, 'この月のイベントはありません')
+        : react.createElement('ul', {}, events.map((e) => react.createElement('li', { key: e.date }, `${e.date}: ${e.title}`))));
 }
 // ---- Markdownレンダラーへのフック ----
 function hookMarkdownRenderer() {
-    if (window.growiFacade?.markdownRenderer == null) {
+    if (growiFacade?.markdownRenderer == null) {
         console.warn('[growi-plugin-calendar] growiFacade.markdownRenderer not found');
         return;
     }
-    const { optionsGenerators } = window.growiFacade.markdownRenderer;
+    const { optionsGenerators } = growiFacade.markdownRenderer;
     const original = optionsGenerators.customGenerateViewOptions ?? optionsGenerators.generateViewOptions;
     optionsGenerators.customGenerateViewOptions = (...args) => {
         const options = original(...args);
         const OriginalCode = options.components.code;
         options.components.code = (props) => {
-            console.log('[growi-plugin-calendar] code className:', JSON.stringify(props.className));
             if (props.className != null && props.className.includes('growi-calendar')) {
-                return React.createElement(CalendarSummary);
+                return growiFacade.react.createElement(CalendarSummary);
             }
-            return OriginalCode ? React.createElement(OriginalCode, props) : props.children;
+            return OriginalCode ? growiFacade.react.createElement(OriginalCode, props) : props.children;
         };
         return options;
     };
