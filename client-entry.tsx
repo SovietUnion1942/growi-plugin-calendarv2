@@ -43,7 +43,6 @@ function parseEvents(body: string) {
   return events;
 }
 
-// 全イベントの中から、指定した年月(例: "2026-08")のものだけ絞り込む
 async function fetchEventsForMonth(yearMonth: string) {
   const all = await fetchAllEvents();
   return all.filter(e => e.date.startsWith(yearMonth));
@@ -104,7 +103,8 @@ function hookMarkdownRenderer() {
     const OriginalCode = options.components.code;
 
     options.components.code = (props: any) => {
-      if (props.className === 'lang-growi-calendar') {
+      console.log('[growi-plugin-calendar] code className:', JSON.stringify(props.className));
+      if (props.className != null && props.className.includes('growi-calendar')) {
         return React.createElement(CalendarSummary);
       }
       return OriginalCode ? React.createElement(OriginalCode, props) : props.children;
