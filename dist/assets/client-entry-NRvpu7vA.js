@@ -1,0 +1,1 @@
+const i=()=>{console.log("[growi-plugin-calendar] activated!")},a=()=>{console.log("[growi-plugin-calendar] deactivated!")};window.pluginActivators==null&&(window.pluginActivators={});window.pluginActivators["growi-plugin-calendar"]={activate:i,deactivate:a};
