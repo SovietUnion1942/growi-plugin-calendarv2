@@ -46,6 +46,23 @@ function shiftMonth(yearMonth, diff) {
     const d = new Date(y, m - 1 + diff, 1);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
+// ---- 自分のユーザー名取得 ----
+let cachedUsername = null;
+async function getCurrentUsername() {
+    if (cachedUsername != null)
+        return cachedUsername;
+    try {
+        const res = await fetch('/_api/v3/personal-setting', { credentials: 'include' });
+        const data = await res.json();
+        console.log('[growi-plugin-calendar] personal-setting response:', data);
+        cachedUsername = data.currentUser?.username ?? null;
+        return cachedUsername;
+    }
+    catch (err) {
+        console.error('[growi-plugin-calendar] getCurrentUsername failed:', err);
+        return null;
+    }
+}
 // ---- カレンダー表示コンポーネント(ここが変更点) ----
 // 指定した年月の週×曜日グリッドを作る
 function getCalendarGrid(yearMonth) {
@@ -85,6 +102,97 @@ function formatDate(d) {
     return `${yyyy}-${mm}-${dd}`;
 }
 const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
+async function fetchMyAvailability(yearMonth, username) {
+    const path = `/schedule/responses/${yearMonth}/${username}`;
+    const res = await fetch('/_api/v3/pages/list?path=' + encodeURIComponent(path), { credentials: 'include' });
+    const listData = await res.json();
+    const page = listData.pages?.[0];
+    if (page == null)
+        return {};
+    const pageRes = await fetch(`/_api/v3/page?pageId=${page._id}`, { credentials: 'include' });
+    const { page: pageDetail } = await pageRes.json();
+    const match = pageDetail.revision.body.match(/<!--\s*availability\s*([\s\S]*?)-->/);
+    if (match == null)
+        return {};
+    try {
+        return JSON.parse(match[1]);
+    }
+    catch {
+        return {};
+    }
+}
+async function saveMyAvailability(yearMonth, username, data) {
+    const path = `/schedule/responses/${yearMonth}/${username}`;
+    const body = `\`\`\`growi-availability\n\`\`\`\n<!-- availability\n${JSON.stringify(data)}\n-->\n`;
+    // 既存ページがあるか確認
+    const listRes = await fetch('/_api/v3/pages/list?path=' + encodeURIComponent(path), { credentials: 'include' });
+    const listData = await listRes.json();
+    const existing = listData.pages?.[0];
+    if (existing == null) {
+        // 新規作成
+        await fetch('/_api/v3/pages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ path, body }),
+        });
+    }
+    else {
+        // 既存ページの更新(revisionIdが必要)
+        const pageRes = await fetch(`/_api/v3/page?pageId=${existing._id}`, { credentials: 'include' });
+        const { page: pageDetail } = await pageRes.json();
+        await fetch('/_api/v3/page', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+                pageId: existing._id,
+                revisionId: pageDetail.revision._id,
+                body,
+            }),
+        });
+    }
+}
+function AvailabilityEditor() {
+    const { react } = growiFacade;
+    const { useState, useEffect } = react;
+    const [yearMonth, setYearMonth] = useState(getCurrentYearMonth());
+    const [username, setUsername] = useState(null);
+    const [availability, setAvailability] = useState({});
+    const [saving, setSaving] = useState(false);
+    useEffect(() => {
+        getCurrentUsername().then((name) => setUsername(name));
+    }, []);
+    useEffect(() => {
+        if (username == null)
+            return;
+        fetchMyAvailability(yearMonth, username).then(setAvailability);
+    }, [yearMonth, username]);
+    const [year, month] = yearMonth.split('-');
+    const weeks = getCalendarGrid(yearMonth);
+    async function toggle(date) {
+        if (username == null)
+            return;
+        const next = { ...availability, [date]: !availability[date] };
+        setAvailability(next);
+        setSaving(true);
+        await saveMyAvailability(yearMonth, username, next);
+        setSaving(false);
+    }
+    if (username == null) {
+        return react.createElement('p', {}, 'ユーザー情報を取得中...');
+    }
+    const cellStyle = { border: '1px solid #ddd', verticalAlign: 'top', padding: '4px', width: '14.28%', height: '60px', cursor: 'pointer' };
+    return react.createElement('div', { style: { border: '1px solid #ccc', padding: '1em', borderRadius: '8px' } }, react.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: '0.5em', marginBottom: '0.5em' } }, react.createElement('button', { onClick: () => setYearMonth(shiftMonth(yearMonth, -1)) }, '<'), react.createElement('button', { onClick: () => setYearMonth(shiftMonth(yearMonth, +1)) }, '>'), react.createElement('strong', {}, `${year}年${parseInt(month)}月 の出欠(${username})`), saving ? react.createElement('span', { style: { fontSize: '0.8em', color: '#888' } }, '保存中...') : null), react.createElement('table', { style: { width: '100%', borderCollapse: 'collapse' } }, react.createElement('thead', {}, react.createElement('tr', {}, WEEKDAY_LABELS.map((label) => react.createElement('th', { key: label, style: { padding: '4px' } }, label)))), react.createElement('tbody', {}, weeks.map((week, wi) => react.createElement('tr', { key: wi }, week.map(cell => {
+        const state = availability[cell.date];
+        const bg = state === true ? '#c8f7c5' : state === false ? '#f7c5c5' : 'transparent';
+        return react.createElement('td', {
+            key: cell.date,
+            style: { ...cellStyle, background: cell.inMonth ? bg : '#f5f5f5', opacity: cell.inMonth ? 1 : 0.4 },
+            onClick: () => cell.inMonth && toggle(cell.date),
+        }, react.createElement('div', { style: { fontWeight: 'bold' } }, cell.day), state === true ? react.createElement('div', {}, '○') : state === false ? react.createElement('div', {}, '×') : null);
+    }))))));
+}
 function CalendarSummary() {
     const { react } = growiFacade;
     const { useState, useEffect } = react;
@@ -125,6 +233,9 @@ function hookMarkdownRenderer() {
         options.components.code = (props) => {
             if (props.className != null && props.className.includes('growi-calendar')) {
                 return growiFacade.react.createElement(CalendarSummary);
+            }
+            if (props.className != null && props.className.includes('growi-availability')) {
+                return growiFacade.react.createElement(AvailabilityEditor);
             }
             return OriginalCode ? growiFacade.react.createElement(OriginalCode, props) : props.children;
         };
