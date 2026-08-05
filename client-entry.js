@@ -59,6 +59,44 @@ function CalendarSummary() {
     return react.createElement('div', { style: { border: '1px solid #ccc', padding: '1em', borderRadius: '8px' } }, react.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: '0.5em', marginBottom: '0.5em' } }, react.createElement('button', { onClick: () => setYearMonth(shiftMonth(yearMonth, -1)) }, '<'), react.createElement('button', { onClick: () => setYearMonth(shiftMonth(yearMonth, +1)) }, '>'), react.createElement('strong', {}, `${year}年${parseInt(month)}月`)), events.length === 0
         ? react.createElement('p', {}, 'この月のイベントはありません')
         : react.createElement('ul', {}, events.map((e) => react.createElement('li', { key: e.date }, `${e.date}: ${e.title}`))));
+    // 指定した年月の週×曜日グリッドを作る
+    function getCalendarGrid(yearMonth) {
+        const [y, m] = yearMonth.split('-').map(Number);
+        const firstDay = new Date(y, m - 1, 1);
+        const lastDay = new Date(y, m, 0);
+        const startWeekday = firstDay.getDay(); // 0=日曜
+        const days = [];
+        // 前月の埋め草
+        for (let i = 0; i < startWeekday; i++) {
+            const d = new Date(y, m - 1, 1 - (startWeekday - i));
+            days.push({ date: formatDate(d), day: d.getDate(), inMonth: false });
+        }
+        // 当月
+        for (let d = 1; d <= lastDay.getDate(); d++) {
+            const date = new Date(y, m - 1, d);
+            days.push({ date: formatDate(date), day: d, inMonth: true });
+        }
+        // 翌月の埋め草(7の倍数になるまで)
+        while (days.length % 7 !== 0) {
+            const last = days[days.length - 1];
+            const d = new Date(last.date);
+            d.setDate(d.getDate() + 1);
+            days.push({ date: formatDate(d), day: d.getDate(), inMonth: false });
+        }
+        // 週ごとに分割
+        const weeks = [];
+        for (let i = 0; i < days.length; i += 7) {
+            weeks.push(days.slice(i, i + 7));
+        }
+        return weeks;
+    }
+    function formatDate(d) {
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+    }
+    const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
 }
 // ---- Markdownレンダラーへのフック ----
 function hookMarkdownRenderer() {
