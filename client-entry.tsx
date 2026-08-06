@@ -344,11 +344,8 @@ function CalendarSummary() {
             react.createElement('tr', { key: wi },
               week.map(cell => {
                 const score = scoreOf(cell.date);
-                const opacity = maxAbsScore > 0 ? Math.min(Math.abs(score) / maxAbsScore, 1) : 0;
-                const bg =
-                  score > 0 ? `rgba(76, 175, 80, ${0.12 + opacity * 0.55})` :
-                  score < 0 ? `rgba(244, 67, 54, ${0.12 + opacity * 0.55})` :
-                  'transparent';
+                const hasData = aggregate.perDate[cell.date] != null;
+                const bg = hasData ? scoreToColor(score, maxAbsScore) : 'transparent';
                 const isMax = cell.inMonth && maxScore > 0 && score === maxScore;
                 const isSelected = cell.date === selectedDate;
 
@@ -422,6 +419,16 @@ async function fetchAvailabilityAggregate(yearMonth: string) {
 
   return { perDate, totalResponders: pages.length };
 }
+
+// スコアを緑(プラス最大)→黄色(0)→赤(マイナス最大)のグラデーションに変換
+function scoreToColor(score: number, maxAbsScore: number): string {
+  if (maxAbsScore === 0) return 'transparent';
+  const t = Math.max(-1, Math.min(1, score / maxAbsScore)); // -1〜1に正規化
+  const hue = 60 + 60 * t; // t=1→120(緑), t=0→60(黄), t=-1→0(赤)
+  const lightness = 82 - Math.abs(t) * 14; // 0に近いほど淡く、両端に近いほど少し濃く
+  return `hsl(${hue}, 65%, ${lightness}%)`;
+}
+
 // ---- Markdownレンダラーへのフック ----
 
 function hookMarkdownRenderer() {
