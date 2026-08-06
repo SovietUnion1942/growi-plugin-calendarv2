@@ -3,7 +3,7 @@ const activate = () => {
     console.log('[growi-plugin-calendar] activated!');
     hookMarkdownRenderer();
 };
-// ---- イベントデータ取得・パース(変更なし) ----
+// ---- イベントデータ取得・パース ----
 async function fetchAllEvents() {
     const res = await fetch('/_api/v3/pages/list?path=' + encodeURIComponent('/イベント/決定済みイベント保管場所'), { credentials: 'include' });
     const listData = await res.json();
@@ -46,6 +46,40 @@ function shiftMonth(yearMonth, diff) {
     const d = new Date(y, m - 1 + diff, 1);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
+// ---- カレンダーグリッド ----
+function getCalendarGrid(yearMonth) {
+    const [y, m] = yearMonth.split('-').map(Number);
+    const firstDay = new Date(y, m - 1, 1);
+    const lastDay = new Date(y, m, 0);
+    const startWeekday = firstDay.getDay();
+    const days = [];
+    for (let i = 0; i < startWeekday; i++) {
+        const d = new Date(y, m - 1, 1 - (startWeekday - i));
+        days.push({ date: formatDate(d), day: d.getDate(), inMonth: false });
+    }
+    for (let d = 1; d <= lastDay.getDate(); d++) {
+        const date = new Date(y, m - 1, d);
+        days.push({ date: formatDate(date), day: d, inMonth: true });
+    }
+    while (days.length % 7 !== 0) {
+        const last = days[days.length - 1];
+        const d = new Date(last.date);
+        d.setDate(d.getDate() + 1);
+        days.push({ date: formatDate(d), day: d.getDate(), inMonth: false });
+    }
+    const weeks = [];
+    for (let i = 0; i < days.length; i += 7) {
+        weeks.push(days.slice(i, i + 7));
+    }
+    return weeks;
+}
+function formatDate(d) {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+}
+const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
 // ---- 自分のユーザー名取得 ----
 let cachedUsername = null;
 async function getCurrentUsername() {
@@ -63,45 +97,7 @@ async function getCurrentUsername() {
         return null;
     }
 }
-// ---- カレンダー表示コンポーネント(ここが変更点) ----
-// 指定した年月の週×曜日グリッドを作る
-function getCalendarGrid(yearMonth) {
-    const [y, m] = yearMonth.split('-').map(Number);
-    const firstDay = new Date(y, m - 1, 1);
-    const lastDay = new Date(y, m, 0);
-    const startWeekday = firstDay.getDay(); // 0=日曜
-    const days = [];
-    // 前月の埋め草
-    for (let i = 0; i < startWeekday; i++) {
-        const d = new Date(y, m - 1, 1 - (startWeekday - i));
-        days.push({ date: formatDate(d), day: d.getDate(), inMonth: false });
-    }
-    // 当月
-    for (let d = 1; d <= lastDay.getDate(); d++) {
-        const date = new Date(y, m - 1, d);
-        days.push({ date: formatDate(date), day: d, inMonth: true });
-    }
-    // 翌月の埋め草(7の倍数になるまで)
-    while (days.length % 7 !== 0) {
-        const last = days[days.length - 1];
-        const d = new Date(last.date);
-        d.setDate(d.getDate() + 1);
-        days.push({ date: formatDate(d), day: d.getDate(), inMonth: false });
-    }
-    // 週ごとに分割
-    const weeks = [];
-    for (let i = 0; i < days.length; i += 7) {
-        weeks.push(days.slice(i, i + 7));
-    }
-    return weeks;
-}
-function formatDate(d) {
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}`;
-}
-const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
+// ---- 出欠データの取得・保存 ----
 async function fetchMyAvailability(yearMonth, username) {
     const path = `/schedule/responses/${yearMonth}/${username}`;
     const res = await fetch('/_api/v3/pages/list?path=' + encodeURIComponent(path), { credentials: 'include' });
@@ -124,12 +120,10 @@ async function fetchMyAvailability(yearMonth, username) {
 async function saveMyAvailability(yearMonth, username, data) {
     const path = `/schedule/responses/${yearMonth}/${username}`;
     const body = `\`\`\`growi-availability\n\`\`\`\n<!-- availability\n${JSON.stringify(data)}\n-->\n`;
-    // 既存ページがあるか確認
     const listRes = await fetch('/_api/v3/pages/list?path=' + encodeURIComponent(path), { credentials: 'include' });
     const listData = await listRes.json();
     const existing = listData.pages?.[0];
     if (existing == null) {
-        // 新規作成
         await fetch('/_api/v3/pages', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -138,7 +132,6 @@ async function saveMyAvailability(yearMonth, username, data) {
         });
     }
     else {
-        // 既存ページの更新(revisionIdが必要)
         const pageRes = await fetch(`/_api/v3/page?pageId=${existing._id}`, { credentials: 'include' });
         const { page: pageDetail } = await pageRes.json();
         await fetch('/_api/v3/page', {
@@ -153,6 +146,7 @@ async function saveMyAvailability(yearMonth, username, data) {
         });
     }
 }
+// ---- 出欠入力コンポーネント ----
 function AvailabilityEditor() {
     const { react } = growiFacade;
     const { useState, useEffect } = react;
@@ -173,7 +167,18 @@ function AvailabilityEditor() {
     async function toggle(date) {
         if (username == null)
             return;
-        const next = { ...availability, [date]: !availability[date] };
+        const current = availability[date];
+        const nextValue = current === undefined ? 'yes' :
+            current === 'yes' ? 'maybe' :
+                current === 'maybe' ? 'no' :
+                    undefined;
+        const next = { ...availability };
+        if (nextValue === undefined) {
+            delete next[date];
+        }
+        else {
+            next[date] = nextValue;
+        }
         setAvailability(next);
         setSaving(true);
         await saveMyAvailability(yearMonth, username, next);
@@ -185,14 +190,22 @@ function AvailabilityEditor() {
     const cellStyle = { border: '1px solid #ddd', verticalAlign: 'top', padding: '4px', width: '14.28%', height: '60px', cursor: 'pointer' };
     return react.createElement('div', { style: { border: '1px solid #ccc', padding: '1em', borderRadius: '8px' } }, react.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: '0.5em', marginBottom: '0.5em' } }, react.createElement('button', { onClick: () => setYearMonth(shiftMonth(yearMonth, -1)) }, '<'), react.createElement('button', { onClick: () => setYearMonth(shiftMonth(yearMonth, +1)) }, '>'), react.createElement('strong', {}, `${year}年${parseInt(month)}月 の出欠(${username})`), saving ? react.createElement('span', { style: { fontSize: '0.8em', color: '#888' } }, '保存中...') : null), react.createElement('table', { style: { width: '100%', borderCollapse: 'collapse' } }, react.createElement('thead', {}, react.createElement('tr', {}, WEEKDAY_LABELS.map((label) => react.createElement('th', { key: label, style: { padding: '4px' } }, label)))), react.createElement('tbody', {}, weeks.map((week, wi) => react.createElement('tr', { key: wi }, week.map(cell => {
         const state = availability[cell.date];
-        const bg = state === true ? '#c8f7c5' : state === false ? '#f7c5c5' : 'transparent';
+        const bg = state === 'yes' ? '#c8f7c5' :
+            state === 'maybe' ? '#fff3b0' :
+                state === 'no' ? '#f7c5c5' :
+                    'transparent';
+        const label = state === 'yes' ? '○' :
+            state === 'maybe' ? '△' :
+                state === 'no' ? '×' :
+                    null;
         return react.createElement('td', {
             key: cell.date,
             style: { ...cellStyle, background: cell.inMonth ? bg : '#f5f5f5', opacity: cell.inMonth ? 1 : 0.4 },
             onClick: () => cell.inMonth && toggle(cell.date),
-        }, react.createElement('div', { style: { fontWeight: 'bold' } }, cell.day), state === true ? react.createElement('div', {}, '○') : state === false ? react.createElement('div', {}, '×') : null);
+        }, react.createElement('div', { style: { fontWeight: 'bold' } }, cell.day), label != null ? react.createElement('div', {}, label) : null);
     }))))));
 }
+// ---- カレンダー表示コンポーネント(イベント一覧) ----
 function CalendarSummary() {
     const { react } = growiFacade;
     const { useState, useEffect } = react;
@@ -203,7 +216,6 @@ function CalendarSummary() {
     }, [yearMonth]);
     const [year, month] = yearMonth.split('-');
     const weeks = getCalendarGrid(yearMonth);
-    // 日付ごとにイベントをまとめておく
     const eventsByDate = {};
     events.forEach((e) => {
         var _a;

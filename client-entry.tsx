@@ -5,7 +5,7 @@ const activate = (): void => {
   hookMarkdownRenderer();
 };
 
-// ---- イベントデータ取得・パース(変更なし) ----
+// ---- イベントデータ取得・パース ----
 
 async function fetchAllEvents(): Promise<{ date: string; title: string }[]> {
   const res = await fetch(
@@ -54,6 +54,48 @@ function shiftMonth(yearMonth: string, diff: number) {
   const d = new Date(y, m - 1 + diff, 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
+
+// ---- カレンダーグリッド ----
+
+function getCalendarGrid(yearMonth: string) {
+  const [y, m] = yearMonth.split('-').map(Number);
+  const firstDay = new Date(y, m - 1, 1);
+  const lastDay = new Date(y, m, 0);
+  const startWeekday = firstDay.getDay();
+
+  const days: { date: string; day: number; inMonth: boolean }[] = [];
+
+  for (let i = 0; i < startWeekday; i++) {
+    const d = new Date(y, m - 1, 1 - (startWeekday - i));
+    days.push({ date: formatDate(d), day: d.getDate(), inMonth: false });
+  }
+  for (let d = 1; d <= lastDay.getDate(); d++) {
+    const date = new Date(y, m - 1, d);
+    days.push({ date: formatDate(date), day: d, inMonth: true });
+  }
+  while (days.length % 7 !== 0) {
+    const last = days[days.length - 1];
+    const d = new Date(last.date);
+    d.setDate(d.getDate() + 1);
+    days.push({ date: formatDate(d), day: d.getDate(), inMonth: false });
+  }
+
+  const weeks: typeof days[] = [];
+  for (let i = 0; i < days.length; i += 7) {
+    weeks.push(days.slice(i, i + 7));
+  }
+  return weeks;
+}
+
+function formatDate(d: Date) {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
+
 // ---- 自分のユーザー名取得 ----
 
 let cachedUsername: string | null = null;
@@ -72,52 +114,9 @@ async function getCurrentUsername(): Promise<string | null> {
   }
 }
 
-// ---- カレンダー表示コンポーネント(ここが変更点) ----
-// 指定した年月の週×曜日グリッドを作る
-function getCalendarGrid(yearMonth: string) {
-  const [y, m] = yearMonth.split('-').map(Number);
-  const firstDay = new Date(y, m - 1, 1);
-  const lastDay = new Date(y, m, 0);
-  const startWeekday = firstDay.getDay(); // 0=日曜
+// ---- 出欠データの取得・保存 ----
 
-  const days: { date: string; day: number; inMonth: boolean }[] = [];
-
-  // 前月の埋め草
-  for (let i = 0; i < startWeekday; i++) {
-    const d = new Date(y, m - 1, 1 - (startWeekday - i));
-    days.push({ date: formatDate(d), day: d.getDate(), inMonth: false });
-  }
-  // 当月
-  for (let d = 1; d <= lastDay.getDate(); d++) {
-    const date = new Date(y, m - 1, d);
-    days.push({ date: formatDate(date), day: d, inMonth: true });
-  }
-  // 翌月の埋め草(7の倍数になるまで)
-  while (days.length % 7 !== 0) {
-    const last = days[days.length - 1];
-    const d = new Date(last.date);
-    d.setDate(d.getDate() + 1);
-    days.push({ date: formatDate(d), day: d.getDate(), inMonth: false });
-  }
-
-  // 週ごとに分割
-  const weeks: typeof days[] = [];
-  for (let i = 0; i < days.length; i += 7) {
-    weeks.push(days.slice(i, i + 7));
-  }
-  return weeks;
-}
-
-function formatDate(d: Date) {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
-
-async function fetchMyAvailability(yearMonth: string, username: string): Promise<Record<string, boolean>> {
+async function fetchMyAvailability(yearMonth: string, username: string): Promise<Record<string, string>> {
   const path = `/schedule/responses/${yearMonth}/${username}`;
   const res = await fetch('/_api/v3/pages/list?path=' + encodeURIComponent(path), { credentials: 'include' });
   const listData = await res.json();
@@ -135,17 +134,15 @@ async function fetchMyAvailability(yearMonth: string, username: string): Promise
   }
 }
 
-async function saveMyAvailability(yearMonth: string, username: string, data: Record<string, boolean>) {
+async function saveMyAvailability(yearMonth: string, username: string, data: Record<string, string>) {
   const path = `/schedule/responses/${yearMonth}/${username}`;
   const body = `\`\`\`growi-availability\n\`\`\`\n<!-- availability\n${JSON.stringify(data)}\n-->\n`;
 
-  // 既存ページがあるか確認
   const listRes = await fetch('/_api/v3/pages/list?path=' + encodeURIComponent(path), { credentials: 'include' });
   const listData = await listRes.json();
   const existing = listData.pages?.[0];
 
   if (existing == null) {
-    // 新規作成
     await fetch('/_api/v3/pages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -153,7 +150,6 @@ async function saveMyAvailability(yearMonth: string, username: string, data: Rec
       body: JSON.stringify({ path, body }),
     });
   } else {
-    // 既存ページの更新(revisionIdが必要)
     const pageRes = await fetch(`/_api/v3/page?pageId=${existing._id}`, { credentials: 'include' });
     const { page: pageDetail } = await pageRes.json();
     await fetch('/_api/v3/page', {
@@ -169,13 +165,15 @@ async function saveMyAvailability(yearMonth: string, username: string, data: Rec
   }
 }
 
+// ---- 出欠入力コンポーネント ----
+
 function AvailabilityEditor() {
   const { react } = growiFacade;
   const { useState, useEffect } = react;
 
   const [yearMonth, setYearMonth] = useState(getCurrentYearMonth());
   const [username, setUsername] = useState(null as string | null);
-  const [availability, setAvailability] = useState({} as Record<string, boolean>);
+  const [availability, setAvailability] = useState({} as Record<string, string>);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -192,7 +190,20 @@ function AvailabilityEditor() {
 
   async function toggle(date: string) {
     if (username == null) return;
-    const next = { ...availability, [date]: !availability[date] };
+    const current = availability[date];
+    const nextValue =
+      current === undefined ? 'yes' :
+      current === 'yes' ? 'maybe' :
+      current === 'maybe' ? 'no' :
+      undefined;
+
+    const next = { ...availability };
+    if (nextValue === undefined) {
+      delete next[date];
+    } else {
+      next[date] = nextValue;
+    }
+
     setAvailability(next);
     setSaving(true);
     await saveMyAvailability(yearMonth, username, next);
@@ -223,14 +234,24 @@ function AvailabilityEditor() {
           react.createElement('tr', { key: wi },
             week.map(cell => {
               const state = availability[cell.date];
-              const bg = state === true ? '#c8f7c5' : state === false ? '#f7c5c5' : 'transparent';
+              const bg =
+                state === 'yes' ? '#c8f7c5' :
+                state === 'maybe' ? '#fff3b0' :
+                state === 'no' ? '#f7c5c5' :
+                'transparent';
+              const label =
+                state === 'yes' ? '○' :
+                state === 'maybe' ? '△' :
+                state === 'no' ? '×' :
+                null;
+
               return react.createElement('td', {
                 key: cell.date,
                 style: { ...cellStyle, background: cell.inMonth ? bg : '#f5f5f5', opacity: cell.inMonth ? 1 : 0.4 },
                 onClick: () => cell.inMonth && toggle(cell.date),
               },
                 react.createElement('div', { style: { fontWeight: 'bold' } }, cell.day),
-                state === true ? react.createElement('div', {}, '○') : state === false ? react.createElement('div', {}, '×') : null
+                label != null ? react.createElement('div', {}, label) : null
               );
             })
           )
@@ -239,6 +260,8 @@ function AvailabilityEditor() {
     )
   );
 }
+
+// ---- カレンダー表示コンポーネント(イベント一覧) ----
 
 function CalendarSummary() {
   const { react } = growiFacade;
@@ -254,7 +277,6 @@ function CalendarSummary() {
   const [year, month] = yearMonth.split('-');
   const weeks = getCalendarGrid(yearMonth);
 
-  // 日付ごとにイベントをまとめておく
   const eventsByDate: Record<string, string[]> = {};
   events.forEach((e: { date: string; title: string }) => {
     eventsByDate[e.date] ??= [];
