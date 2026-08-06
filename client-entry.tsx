@@ -215,13 +215,14 @@ function AvailabilityEditor() {
   }
 
   const cellStyle = {
-    border: '1px solid #ddd',
-    verticalAlign: 'top',
-    padding: '4px',
-    width: '14.28%',
-    height: '60px',
-    cursor: 'pointer',
-    boxSizing: 'border-box',
+   border: '1px solid #ddd',
+   verticalAlign: 'top',
+   padding: '4px',
+   width: '14.28%',
+   minHeight: '75px',
+   height: 'auto',
+   boxSizing: 'border-box',
+   cursor: 'pointer',
   };
 
   return react.createElement('div', { style: { border: '1px solid #ccc', padding: '1em', borderRadius: '8px', overflowX: 'auto' } },
@@ -312,13 +313,14 @@ function CalendarSummary() {
   const maxScore = scores.length > 0 ? Math.max(...scores) : 0;
 
   const cellStyle = {
-    border: '1px solid #ddd',
-    verticalAlign: 'top',
-    padding: '4px',
-    width: '14.28%',
-    height: '75px',
-    boxSizing: 'border-box',
-    cursor: 'pointer',
+   border: '1px solid #ddd',
+   verticalAlign: 'top',
+   padding: '4px',
+   width: '14.28%',
+   minHeight: '75px',
+   height: 'auto',
+   boxSizing: 'border-box',
+   cursor: 'pointer',
   };
 
   const selectedAgg = selectedDate != null ? aggregate.perDate[selectedDate] : null;
@@ -362,8 +364,20 @@ function CalendarSummary() {
                 },
                   react.createElement('div', { style: { fontWeight: 'bold' } }, cell.day),
                   (eventsByDate[cell.date] ?? []).map((title: string, i: number) =>
-                    react.createElement('div', { key: i, style: { fontSize: '0.65em', background: '#e0f0ff', borderRadius: '4px', padding: '1px 3px', marginTop: '2px' } }, title)
-                  )
+                  react.createElement('div', {
+                   key: i,
+                   style: {
+                    fontSize: '0.65em',
+                    background: '#e0f0ff',
+                    borderRadius: '4px',
+                    padding: '1px 3px',
+                    marginTop: '2px',
+                    whiteSpace: 'normal',
+                    wordBreak: 'break-word',
+                    overflowWrap: 'break-word',
+                  },
+                }, title)
+              )
                 );
               })
             )

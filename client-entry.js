@@ -192,9 +192,10 @@ function AvailabilityEditor() {
         verticalAlign: 'top',
         padding: '4px',
         width: '14.28%',
-        height: '60px',
-        cursor: 'pointer',
+        minHeight: '75px',
+        height: 'auto',
         boxSizing: 'border-box',
+        cursor: 'pointer',
     };
     return react.createElement('div', { style: { border: '1px solid #ccc', padding: '1em', borderRadius: '8px', overflowX: 'auto' } }, react.createElement('div', { style: { minWidth: '480px' } }, react.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: '0.5em', marginBottom: '0.5em' } }, react.createElement('button', { onClick: () => setYearMonth(shiftMonth(yearMonth, -1)) }, '<'), react.createElement('button', { onClick: () => setYearMonth(shiftMonth(yearMonth, +1)) }, '>'), react.createElement('strong', {}, `${year}年${parseInt(month)}月 の出欠(${username})`), saving ? react.createElement('span', { style: { fontSize: '0.8em', color: '#888' } }, '保存中...') : null), react.createElement('table', { style: { width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' } }, react.createElement('thead', {}, react.createElement('tr', {}, WEEKDAY_LABELS.map((label) => react.createElement('th', { key: label, style: { padding: '4px' } }, label)))), react.createElement('tbody', {}, weeks.map((week, wi) => react.createElement('tr', { key: wi }, week.map(cell => {
         const state = availability[cell.date];
@@ -252,7 +253,8 @@ function CalendarSummary() {
         verticalAlign: 'top',
         padding: '4px',
         width: '14.28%',
-        height: '75px',
+        minHeight: '75px',
+        height: 'auto',
         boxSizing: 'border-box',
         cursor: 'pointer',
     };
@@ -273,7 +275,19 @@ function CalendarSummary() {
                 outlineOffset: '-2px',
             },
             onClick: () => cell.inMonth && setSelectedDate(cell.date),
-        }, react.createElement('div', { style: { fontWeight: 'bold' } }, cell.day), (eventsByDate[cell.date] ?? []).map((title, i) => react.createElement('div', { key: i, style: { fontSize: '0.65em', background: '#e0f0ff', borderRadius: '4px', padding: '1px 3px', marginTop: '2px' } }, title)));
+        }, react.createElement('div', { style: { fontWeight: 'bold' } }, cell.day), (eventsByDate[cell.date] ?? []).map((title, i) => react.createElement('div', {
+            key: i,
+            style: {
+                fontSize: '0.65em',
+                background: '#e0f0ff',
+                borderRadius: '4px',
+                padding: '1px 3px',
+                marginTop: '2px',
+                whiteSpace: 'normal',
+                wordBreak: 'break-word',
+                overflowWrap: 'break-word',
+            },
+        }, title)));
     }))))), 
     // ---- 選択した日の詳細パネル ----
     selectedDate != null ? react.createElement('div', { style: { marginTop: '0.8em', padding: '0.8em', background: '#fafafa', border: '1px solid #ddd', borderRadius: '8px' } }, react.createElement('strong', {}, `${selectedDate} の出欠状況`), selectedAgg == null || (selectedAgg.yes.length === 0 && selectedAgg.maybe.length === 0 && selectedAgg.no.length === 0)
