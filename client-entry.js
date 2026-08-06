@@ -124,11 +124,11 @@ async function saveMyAvailability(yearMonth, username, data) {
     const listData = await listRes.json();
     const existing = listData.pages?.[0];
     if (existing == null) {
-        await fetch('/_api/v3/pages', {
+        await fetch('/_api/v3/page', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({ path, body }),
+            body: JSON.stringify({ path, body, grant: 1 }),
         });
     }
     else {

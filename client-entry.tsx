@@ -143,11 +143,11 @@ async function saveMyAvailability(yearMonth: string, username: string, data: Rec
   const existing = listData.pages?.[0];
 
   if (existing == null) {
-    await fetch('/_api/v3/pages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ path, body }),
+  await fetch('/_api/v3/page', {  // pages → page に変更
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ path, body, grant: 1 }),
     });
   } else {
     const pageRes = await fetch(`/_api/v3/page?pageId=${existing._id}`, { credentials: 'include' });
