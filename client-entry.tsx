@@ -215,15 +215,15 @@ function AvailabilityEditor() {
   }
 
   const cellStyle = {
-   border: '1px solid #ddd',
-   verticalAlign: 'top',
-   padding: '4px',
-   width: '14.28%',
-   minHeight: '75px',
-   height: 'auto',
-   boxSizing: 'border-box',
-   cursor: 'pointer',
-  };
+  border: '1px solid #ddd',
+  verticalAlign: 'top',
+  padding: '4px',
+  width: '14.28%',
+  height: '75px',
+  boxSizing: 'border-box',
+  cursor: 'pointer',
+  overflow: 'hidden',
+};
 
   return react.createElement('div', { style: { border: '1px solid #ccc', padding: '1em', borderRadius: '8px', overflowX: 'auto' } },
     react.createElement('div', { style: { minWidth: '480px' } },
@@ -373,27 +373,29 @@ function CalendarSummary() {
                   onClick: () => cell.inMonth && setSelectedDate(cell.date),
                 },
                   react.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: '2px' } },
-                    hasEvent ? react.createElement('span', { style: { fontSize: '0.7em' } }, '📌') : null,
-                    react.createElement('span', { style: { fontWeight: 'bold' } }, cell.day)
-                  ),
-                  (eventsByDate[cell.date] ?? []).map((title: string, i: number) =>
-                    react.createElement('div', {
-                      key: i,
-                      style: {
-                        fontSize: '0.65em',
-                        background: '#fff3e0',
-                        color: '#e65100',
-                        fontWeight: 'bold',
-                        border: '1px solid #ffcc80',
-                        borderRadius: '4px',
-                        padding: '1px 3px',
-                        marginTop: '2px',
-                        whiteSpace: 'normal',
-                        wordBreak: 'break-word',
-                        overflowWrap: 'break-word',
-                      },
-                    }, title)
-                  )
+  hasEvent ? react.createElement('span', { style: { fontSize: '0.7em' } }, '📌') : null,
+  react.createElement('span', { style: { fontWeight: 'bold' } }, cell.day)
+),
+react.createElement('div', { style: { maxHeight: '52px', overflowY: 'auto' } },
+  (eventsByDate[cell.date] ?? []).map((title: string, i: number) =>
+    react.createElement('div', {
+      key: i,
+      style: {
+        fontSize: '0.65em',
+        background: '#fff3e0',
+        color: '#e65100',
+        fontWeight: 'bold',
+        border: '1px solid #ffcc80',
+        borderRadius: '4px',
+        padding: '1px 3px',
+        marginTop: '2px',
+        whiteSpace: 'normal',
+        wordBreak: 'break-word',
+        overflowWrap: 'break-word',
+      },
+    }, title)
+  )
+)
                 );
               })
             )
