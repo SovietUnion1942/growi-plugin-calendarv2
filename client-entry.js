@@ -265,21 +265,33 @@ function CalendarSummary() {
         const bg = hasData ? scoreToColor(score, maxAbsScore) : 'transparent';
         const isMax = cell.inMonth && maxScore > 0 && score === maxScore;
         const isSelected = cell.date === selectedDate;
+        const hasEvent = (eventsByDate[cell.date] ?? []).length > 0;
+        // 優先度: イベントあり > 選択中 > 最多参加日
+        const outline = hasEvent
+            ? '3px solid #e65100'
+            : isSelected
+                ? '2px solid #1976d2'
+                : isMax
+                    ? '2px solid #2e7d32'
+                    : 'none';
         return react.createElement('td', {
             key: cell.date,
             style: {
                 ...cellStyle,
                 background: cell.inMonth ? bg : '#f5f5f5',
                 opacity: cell.inMonth ? 1 : 0.4,
-                outline: isMax ? '2px solid #2e7d32' : isSelected ? '2px solid #1976d2' : 'none',
+                outline,
                 outlineOffset: '-2px',
             },
             onClick: () => cell.inMonth && setSelectedDate(cell.date),
-        }, react.createElement('div', { style: { fontWeight: 'bold' } }, cell.day), (eventsByDate[cell.date] ?? []).map((title, i) => react.createElement('div', {
+        }, react.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: '2px' } }, hasEvent ? react.createElement('span', { style: { fontSize: '0.7em' } }, '📌') : null, react.createElement('span', { style: { fontWeight: 'bold' } }, cell.day)), (eventsByDate[cell.date] ?? []).map((title, i) => react.createElement('div', {
             key: i,
             style: {
                 fontSize: '0.65em',
-                background: '#e0f0ff',
+                background: '#fff3e0',
+                color: '#e65100',
+                fontWeight: 'bold',
+                border: '1px solid #ffcc80',
                 borderRadius: '4px',
                 padding: '1px 3px',
                 marginTop: '2px',
