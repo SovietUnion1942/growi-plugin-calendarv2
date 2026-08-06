@@ -283,10 +283,12 @@ function CalendarSummary() {
     perDate: {} as Record<string, { yes: string[]; maybe: string[]; no: string[] }>,
     totalResponders: 0,
   });
+  const [selectedDate, setSelectedDate] = useState(null as string | null);
 
   useEffect(() => {
     fetchEventsForMonth(yearMonth).then(setEvents);
     fetchAvailabilityAggregate(yearMonth).then(setAggregate);
+    setSelectedDate(null);
   }, [yearMonth]);
 
   const [year, month] = yearMonth.split('-');
@@ -298,17 +300,28 @@ function CalendarSummary() {
     eventsByDate[e.date].push(e.title);
   });
 
-  const yesCounts = (Object.values(aggregate.perDate) as any[]).map((d: any) => d.yes.length);
-  const maxYesCount = yesCounts.length > 0 ? Math.max(...yesCounts) : 0;
+  // 日付ごとのスコアを計算(○:+1, △:+0.5, ×:-1)
+  function scoreOf(date: string) {
+    const d = aggregate.perDate[date];
+    if (d == null) return 0;
+    return d.yes.length * 1 + d.maybe.length * 0.5 + d.no.length * -1;
+  }
+
+  const scores = Object.keys(aggregate.perDate).map(scoreOf);
+  const maxAbsScore = scores.length > 0 ? Math.max(...scores.map(s => Math.abs(s)), 1) : 1;
+  const maxScore = scores.length > 0 ? Math.max(...scores) : 0;
 
   const cellStyle = {
     border: '1px solid #ddd',
     verticalAlign: 'top',
     padding: '4px',
     width: '14.28%',
-    height: '85px',
+    height: '75px',
     boxSizing: 'border-box',
+    cursor: 'pointer',
   };
+
+  const selectedAgg = selectedDate != null ? aggregate.perDate[selectedDate] : null;
 
   return react.createElement('div', { style: { border: '1px solid #ccc', padding: '1em', borderRadius: '8px', overflowX: 'auto' } },
     react.createElement('div', { style: { minWidth: '480px' } },
@@ -330,14 +343,14 @@ function CalendarSummary() {
           weeks.map((week: { date: string; day: number; inMonth: boolean }[], wi: number) =>
             react.createElement('tr', { key: wi },
               week.map(cell => {
-                const dayAgg = aggregate.perDate[cell.date];
-                const yesCount = dayAgg?.yes.length ?? 0;
-                const isMax = cell.inMonth && maxYesCount > 0 && yesCount === maxYesCount;
-
-                const intensity = maxYesCount > 0 ? yesCount / maxYesCount : 0;
-                const bg = yesCount > 0
-                  ? `rgba(76, 175, 80, ${0.15 + intensity * 0.55})`
-                  : 'transparent';
+                const score = scoreOf(cell.date);
+                const opacity = maxAbsScore > 0 ? Math.min(Math.abs(score) / maxAbsScore, 1) : 0;
+                const bg =
+                  score > 0 ? `rgba(76, 175, 80, ${0.12 + opacity * 0.55})` :
+                  score < 0 ? `rgba(244, 67, 54, ${0.12 + opacity * 0.55})` :
+                  'transparent';
+                const isMax = cell.inMonth && maxScore > 0 && score === maxScore;
+                const isSelected = cell.date === selectedDate;
 
                 return react.createElement('td', {
                   key: cell.date,
@@ -345,25 +358,32 @@ function CalendarSummary() {
                     ...cellStyle,
                     background: cell.inMonth ? bg : '#f5f5f5',
                     opacity: cell.inMonth ? 1 : 0.4,
-                    outline: isMax ? '2px solid #2e7d32' : 'none',
+                    outline: isMax ? '2px solid #2e7d32' : isSelected ? '2px solid #1976d2' : 'none',
                     outlineOffset: '-2px',
                   },
+                  onClick: () => cell.inMonth && setSelectedDate(cell.date),
                 },
-                  react.createElement('div', { style: { display: 'flex', justifyContent: 'space-between' } },
-                    react.createElement('span', { style: { fontWeight: 'bold' } }, cell.day),
-                    yesCount > 0
-                      ? react.createElement('span', { style: { fontSize: '0.7em', color: '#2e7d32', fontWeight: 'bold' } }, `${yesCount}/${aggregate.totalResponders}`)
-                      : null
-                  ),
+                  react.createElement('div', { style: { fontWeight: 'bold' } }, cell.day),
                   (eventsByDate[cell.date] ?? []).map((title: string, i: number) =>
-                    react.createElement('div', { key: i, style: { fontSize: '0.7em', background: '#e0f0ff', borderRadius: '4px', padding: '2px 4px', marginTop: '2px' } }, title)
+                    react.createElement('div', { key: i, style: { fontSize: '0.65em', background: '#e0f0ff', borderRadius: '4px', padding: '1px 3px', marginTop: '2px' } }, title)
                   )
                 );
               })
             )
           )
         )
-      )
+      ),
+      // ---- 選択した日の詳細パネル ----
+      selectedDate != null ? react.createElement('div', { style: { marginTop: '0.8em', padding: '0.8em', background: '#fafafa', border: '1px solid #ddd', borderRadius: '8px' } },
+        react.createElement('strong', {}, `${selectedDate} の出欠状況`),
+        selectedAgg == null || (selectedAgg.yes.length === 0 && selectedAgg.maybe.length === 0 && selectedAgg.no.length === 0)
+          ? react.createElement('p', { style: { color: '#888', fontSize: '0.9em' } }, 'まだ誰も回答していません')
+          : react.createElement('div', { style: { marginTop: '0.5em', fontSize: '0.9em' } },
+              selectedAgg.yes.length > 0 ? react.createElement('div', { style: { color: '#2e7d32' } }, `○ 参加可能: ${selectedAgg.yes.join('、')}`) : null,
+              selectedAgg.maybe.length > 0 ? react.createElement('div', { style: { color: '#a68b00' } }, `△ 未定: ${selectedAgg.maybe.join('、')}`) : null,
+              selectedAgg.no.length > 0 ? react.createElement('div', { style: { color: '#c62828' } }, `× 不可: ${selectedAgg.no.join('、')}`) : null
+            )
+      ) : react.createElement('p', { style: { marginTop: '0.8em', fontSize: '0.85em', color: '#888' } }, '日付をタップすると、その日の詳しい出欠状況が見られます')
     )
   );
 }
