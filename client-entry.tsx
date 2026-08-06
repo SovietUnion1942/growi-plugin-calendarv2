@@ -214,46 +214,56 @@ function AvailabilityEditor() {
     return react.createElement('p', {}, 'ユーザー情報を取得中...');
   }
 
-  const cellStyle = { border: '1px solid #ddd', verticalAlign: 'top', padding: '4px', width: '14.28%', height: '60px', cursor: 'pointer' };
+  const cellStyle = {
+    border: '1px solid #ddd',
+    verticalAlign: 'top',
+    padding: '4px',
+    width: '14.28%',
+    height: '60px',
+    cursor: 'pointer',
+    boxSizing: 'border-box',
+  };
 
-  return react.createElement('div', { style: { border: '1px solid #ccc', padding: '1em', borderRadius: '8px' } },
-    react.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: '0.5em', marginBottom: '0.5em' } },
-      react.createElement('button', { onClick: () => setYearMonth(shiftMonth(yearMonth, -1)) }, '<'),
-      react.createElement('button', { onClick: () => setYearMonth(shiftMonth(yearMonth, +1)) }, '>'),
-      react.createElement('strong', {}, `${year}年${parseInt(month)}月 の出欠(${username})`),
-      saving ? react.createElement('span', { style: { fontSize: '0.8em', color: '#888' } }, '保存中...') : null
-    ),
-    react.createElement('table', { style: { width: '100%', borderCollapse: 'collapse' } },
-      react.createElement('thead', {},
-        react.createElement('tr', {}, WEEKDAY_LABELS.map((label: string) =>
-          react.createElement('th', { key: label, style: { padding: '4px' } }, label)
-        ))
+  return react.createElement('div', { style: { border: '1px solid #ccc', padding: '1em', borderRadius: '8px', overflowX: 'auto' } },
+    react.createElement('div', { style: { minWidth: '480px' } },
+      react.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: '0.5em', marginBottom: '0.5em' } },
+        react.createElement('button', { onClick: () => setYearMonth(shiftMonth(yearMonth, -1)) }, '<'),
+        react.createElement('button', { onClick: () => setYearMonth(shiftMonth(yearMonth, +1)) }, '>'),
+        react.createElement('strong', {}, `${year}年${parseInt(month)}月 の出欠(${username})`),
+        saving ? react.createElement('span', { style: { fontSize: '0.8em', color: '#888' } }, '保存中...') : null
       ),
-      react.createElement('tbody', {},
-        weeks.map((week: { date: string; day: number; inMonth: boolean }[], wi: number) =>
-          react.createElement('tr', { key: wi },
-            week.map(cell => {
-              const state = availability[cell.date];
-              const bg =
-                state === 'yes' ? '#c8f7c5' :
-                state === 'maybe' ? '#fff3b0' :
-                state === 'no' ? '#f7c5c5' :
-                'transparent';
-              const label =
-                state === 'yes' ? '○' :
-                state === 'maybe' ? '△' :
-                state === 'no' ? '×' :
-                null;
+      react.createElement('table', { style: { width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' } },
+        react.createElement('thead', {},
+          react.createElement('tr', {}, WEEKDAY_LABELS.map((label: string) =>
+            react.createElement('th', { key: label, style: { padding: '4px' } }, label)
+          ))
+        ),
+        react.createElement('tbody', {},
+          weeks.map((week: { date: string; day: number; inMonth: boolean }[], wi: number) =>
+            react.createElement('tr', { key: wi },
+              week.map(cell => {
+                const state = availability[cell.date];
+                const bg =
+                  state === 'yes' ? '#c8f7c5' :
+                  state === 'maybe' ? '#fff3b0' :
+                  state === 'no' ? '#f7c5c5' :
+                  'transparent';
+                const label =
+                  state === 'yes' ? '○' :
+                  state === 'maybe' ? '△' :
+                  state === 'no' ? '×' :
+                  null;
 
-              return react.createElement('td', {
-                key: cell.date,
-                style: { ...cellStyle, background: cell.inMonth ? bg : '#f5f5f5', opacity: cell.inMonth ? 1 : 0.4 },
-                onClick: () => cell.inMonth && toggle(cell.date),
-              },
-                react.createElement('div', { style: { fontWeight: 'bold' } }, cell.day),
-                label != null ? react.createElement('div', {}, label) : null
-              );
-            })
+                return react.createElement('td', {
+                  key: cell.date,
+                  style: { ...cellStyle, background: cell.inMonth ? bg : '#f5f5f5', opacity: cell.inMonth ? 1 : 0.4 },
+                  onClick: () => cell.inMonth && toggle(cell.date),
+                },
+                  react.createElement('div', { style: { fontWeight: 'bold' } }, cell.day),
+                  label != null ? react.createElement('div', {}, label) : null
+                );
+              })
+            )
           )
         )
       )
@@ -269,9 +279,14 @@ function CalendarSummary() {
 
   const [yearMonth, setYearMonth] = useState(getCurrentYearMonth());
   const [events, setEvents] = useState([] as { date: string; title: string }[]);
+  const [aggregate, setAggregate] = useState({
+    perDate: {} as Record<string, { yes: string[]; maybe: string[]; no: string[] }>,
+    totalResponders: 0,
+  });
 
   useEffect(() => {
     fetchEventsForMonth(yearMonth).then(setEvents);
+    fetchAvailabilityAggregate(yearMonth).then(setAggregate);
   }, [yearMonth]);
 
   const [year, month] = yearMonth.split('-');
@@ -283,38 +298,68 @@ function CalendarSummary() {
     eventsByDate[e.date].push(e.title);
   });
 
+  const yesCounts = (Object.values(aggregate.perDate) as any[]).map((d: any) => d.yes.length);
+  const maxYesCount = yesCounts.length > 0 ? Math.max(...yesCounts) : 0;
+
   const cellStyle = {
     border: '1px solid #ddd',
     verticalAlign: 'top',
     padding: '4px',
     width: '14.28%',
-    height: '70px',
+    height: '85px',
+    boxSizing: 'border-box',
   };
 
-  return react.createElement('div', { style: { border: '1px solid #ccc', padding: '1em', borderRadius: '8px' } },
-    react.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: '0.5em', marginBottom: '0.5em' } },
-      react.createElement('button', { onClick: () => setYearMonth(shiftMonth(yearMonth, -1)) }, '<'),
-      react.createElement('button', { onClick: () => setYearMonth(shiftMonth(yearMonth, +1)) }, '>'),
-      react.createElement('strong', {}, `${year}年${parseInt(month)}月`)
-    ),
-    react.createElement('table', { style: { width: '100%', borderCollapse: 'collapse' } },
-      react.createElement('thead', {},
-        react.createElement('tr', {},
-          WEEKDAY_LABELS.map((label: string) =>
-            react.createElement('th', { key: label, style: { padding: '4px', width: '14.28%' } }, label)
-          )
-        )
+  return react.createElement('div', { style: { border: '1px solid #ccc', padding: '1em', borderRadius: '8px', overflowX: 'auto' } },
+    react.createElement('div', { style: { minWidth: '480px' } },
+      react.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: '0.5em', marginBottom: '0.5em' } },
+        react.createElement('button', { onClick: () => setYearMonth(shiftMonth(yearMonth, -1)) }, '<'),
+        react.createElement('button', { onClick: () => setYearMonth(shiftMonth(yearMonth, +1)) }, '>'),
+        react.createElement('strong', {}, `${year}年${parseInt(month)}月`),
+        react.createElement('span', { style: { fontSize: '0.8em', color: '#888' } }, `(回答者数: ${aggregate.totalResponders}人)`)
       ),
-      react.createElement('tbody', {},
-        weeks.map((week: { date: string; day: number; inMonth: boolean }[], wi: number) =>
-          react.createElement('tr', { key: wi },
-            week.map(cell =>
-              react.createElement('td', { key: cell.date, style: cellStyle },
-                react.createElement('div', { style: { opacity: cell.inMonth ? 1 : 0.3, fontWeight: 'bold' } }, cell.day),
-                (eventsByDate[cell.date] ?? []).map((title: string, i: number) =>
-                  react.createElement('div', { key: i, style: { fontSize: '0.75em', background: '#e0f0ff', borderRadius: '4px', padding: '2px 4px', marginTop: '2px' } }, title)
-                )
-              )
+      react.createElement('table', { style: { width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' } },
+        react.createElement('thead', {},
+          react.createElement('tr', {},
+            WEEKDAY_LABELS.map((label: string) =>
+              react.createElement('th', { key: label, style: { padding: '4px', width: '14.28%' } }, label)
+            )
+          )
+        ),
+        react.createElement('tbody', {},
+          weeks.map((week: { date: string; day: number; inMonth: boolean }[], wi: number) =>
+            react.createElement('tr', { key: wi },
+              week.map(cell => {
+                const dayAgg = aggregate.perDate[cell.date];
+                const yesCount = dayAgg?.yes.length ?? 0;
+                const isMax = cell.inMonth && maxYesCount > 0 && yesCount === maxYesCount;
+
+                const intensity = maxYesCount > 0 ? yesCount / maxYesCount : 0;
+                const bg = yesCount > 0
+                  ? `rgba(76, 175, 80, ${0.15 + intensity * 0.55})`
+                  : 'transparent';
+
+                return react.createElement('td', {
+                  key: cell.date,
+                  style: {
+                    ...cellStyle,
+                    background: cell.inMonth ? bg : '#f5f5f5',
+                    opacity: cell.inMonth ? 1 : 0.4,
+                    outline: isMax ? '2px solid #2e7d32' : 'none',
+                    outlineOffset: '-2px',
+                  },
+                },
+                  react.createElement('div', { style: { display: 'flex', justifyContent: 'space-between' } },
+                    react.createElement('span', { style: { fontWeight: 'bold' } }, cell.day),
+                    yesCount > 0
+                      ? react.createElement('span', { style: { fontSize: '0.7em', color: '#2e7d32', fontWeight: 'bold' } }, `${yesCount}/${aggregate.totalResponders}`)
+                      : null
+                  ),
+                  (eventsByDate[cell.date] ?? []).map((title: string, i: number) =>
+                    react.createElement('div', { key: i, style: { fontSize: '0.7em', background: '#e0f0ff', borderRadius: '4px', padding: '2px 4px', marginTop: '2px' } }, title)
+                  )
+                );
+              })
             )
           )
         )
@@ -323,6 +368,40 @@ function CalendarSummary() {
   );
 }
 
+async function fetchAvailabilityAggregate(yearMonth: string) {
+  const res = await fetch(
+    '/_api/v3/pages/list?path=' + encodeURIComponent(`/schedule/responses/${yearMonth}`),
+    { credentials: 'include' }
+  );
+  const listData = await res.json();
+  const pages = listData.pages ?? [];
+
+  const perDate: Record<string, { yes: string[]; maybe: string[]; no: string[] }> = {};
+
+  for (const p of pages) {
+    const username = p.path.split('/').pop();
+    const pageRes = await fetch(`/_api/v3/page?pageId=${p._id}`, { credentials: 'include' });
+    const { page: pageDetail } = await pageRes.json();
+    const match = pageDetail.revision.body.match(/<!--\s*availability\s*([\s\S]*?)-->/);
+    if (match == null) continue;
+
+    let data: Record<string, string> = {};
+    try {
+      data = JSON.parse(match[1]);
+    } catch {
+      continue;
+    }
+
+    for (const [date, state] of Object.entries(data)) {
+      perDate[date] ??= { yes: [], maybe: [], no: [] };
+      if (state === 'yes') perDate[date].yes.push(username);
+      else if (state === 'maybe') perDate[date].maybe.push(username);
+      else if (state === 'no') perDate[date].no.push(username);
+    }
+  }
+
+  return { perDate, totalResponders: pages.length };
+}
 // ---- Markdownレンダラーへのフック ----
 
 function hookMarkdownRenderer() {
