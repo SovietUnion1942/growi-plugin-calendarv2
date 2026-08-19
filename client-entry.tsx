@@ -30,9 +30,56 @@ async function fetchAllEvents(): Promise<CalendarEvent[]> {
   return parseEvents(pageDetail.revision.body);
 }
 
-// Line format: "8月20日 部会" (no time, as before), or with a time prefix:
-// "8月20日 14:00 部会" (start only) / "8月20日 14:00-16:00 部会" (start-end).
-// The end-time separator accepts "-", "〜", or "~".
+// Separator between a start and end time, or between a time and the title
+// when no separating space follows it in the source text (e.g. "16時30分～
+// Zoomで..."). Covers every dash-like character actually seen in real
+// entries: U+301C WAVE DASH (〜), U+FF5E FULLWIDTH TILDE (～), ASCII "~", "-".
+const SEP = '[〜～~-]';
+
+// Line format: "8月20日 部会" (no time, unchanged), or with a leading time —
+// either "H:MM" or the natural Japanese "H時(M分)?" form actually used on
+// this wiki (e.g. "16時30分～Zoomで...", "8時～9時　同志社国際") — optionally
+// followed by an end time in either form.
+function parseTimeAndTitle(rest: string): { startTime?: string; endTime?: string; title: string } {
+  const colonStart = rest.match(/^(\d{1,2}):(\d{2})/);
+  const kanjiStart = colonStart == null ? rest.match(/^(\d{1,2})時(?:(\d{1,2})分)?/) : null;
+  const start = colonStart ?? kanjiStart;
+  if (start == null) return { title: rest.trim() };
+
+  const startHour = start[1];
+  const startMin = colonStart != null ? start[2] : (start[2] ?? '00');
+  let cursor = start[0].length;
+
+  const afterStart = rest.slice(cursor);
+  const colonEnd = afterStart.match(new RegExp(`^\\s*${SEP}\\s*(\\d{1,2}):(\\d{2})`));
+  const kanjiEnd = colonEnd == null
+    ? afterStart.match(new RegExp(`^\\s*${SEP}\\s*(\\d{1,2})時(?:(\\d{1,2})分)?`))
+    : null;
+  const end = colonEnd ?? kanjiEnd;
+
+  let endHour: string | undefined;
+  let endMin: string | undefined;
+  if (end != null) {
+    endHour = end[1];
+    endMin = colonEnd != null ? end[2] : (end[2] ?? '00');
+    cursor += end[0].length;
+  }
+
+  // Strip any leftover separator/whitespace between the (start or end) time
+  // and the title — covers both "…分　Title" (spaced) and "…分～Title"
+  // (the separator glued directly to the title, with no end time given).
+  const title = rest
+    .slice(cursor)
+    .replace(new RegExp(`^[\\s　]*${SEP}?[\\s　]*`), '')
+    .trim();
+
+  return {
+    startTime: `${startHour.padStart(2, '0')}:${startMin}`,
+    endTime: endHour != null ? `${endHour.padStart(2, '0')}:${endMin}` : undefined,
+    title,
+  };
+}
+
 function parseEvents(body: string): CalendarEvent[] {
   const now = new Date();
   let year = now.getFullYear();
@@ -48,16 +95,9 @@ function parseEvents(body: string): CalendarEvent[] {
     lastMonth = month;
     const date = `${year}-${String(month).padStart(2, '0')}-${day}`;
 
-    const timeMatch = rest.match(
-      /^(\d{1,2}):(\d{2})(?:\s*[-〜~]\s*(\d{1,2}):(\d{2}))?[\s　]+(.+?)\s*$/
-    );
-    if (timeMatch != null) {
-      const startTime = `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}`;
-      const endTime = timeMatch[3] != null ? `${timeMatch[3].padStart(2, '0')}:${timeMatch[4]}` : undefined;
-      events.push({ date, title: timeMatch[5], startTime, endTime });
-    } else {
-      events.push({ date, title: rest });
-    }
+    const { startTime, endTime, title } = parseTimeAndTitle(rest);
+    if (title.length === 0) continue;
+    events.push({ date, title, startTime, endTime });
   }
   return events;
 }
