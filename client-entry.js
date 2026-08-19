@@ -3,7 +3,6 @@ const activate = () => {
     console.log('[growi-plugin-calendar] activated!');
     hookMarkdownRenderer();
 };
-// ---- イベントデータ取得・パース ----
 async function fetchAllEvents() {
     const res = await fetch('/_api/v3/pages/list?path=' + encodeURIComponent('/イベント/決定済みイベント保管場所'), { credentials: 'include' });
     const listData = await res.json();
@@ -14,22 +13,34 @@ async function fetchAllEvents() {
     const { page: pageDetail } = await pageRes.json();
     return parseEvents(pageDetail.revision.body);
 }
+// Line format: "8月20日 部会" (no time, as before), or with a time prefix:
+// "8月20日 14:00 部会" (start only) / "8月20日 14:00-16:00 部会" (start-end).
+// The end-time separator accepts "-", "〜", or "~".
 function parseEvents(body) {
     const now = new Date();
     let year = now.getFullYear();
     let lastMonth = 0;
     const events = [];
     for (const line of body.split('\n')) {
-        const match = line.match(/^\s*(\d{1,2})月(\d{1,2})日[\s　]+(.+?)\s*$/);
-        if (match == null)
+        const dateMatch = line.match(/^\s*(\d{1,2})月(\d{1,2})日[\s　]+(.+?)\s*$/);
+        if (dateMatch == null)
             continue;
-        const month = parseInt(match[1], 10);
-        const day = match[2].padStart(2, '0');
-        const title = match[3];
+        const month = parseInt(dateMatch[1], 10);
+        const day = dateMatch[2].padStart(2, '0');
+        const rest = dateMatch[3];
         if (month < lastMonth)
             year += 1;
         lastMonth = month;
-        events.push({ date: `${year}-${String(month).padStart(2, '0')}-${day}`, title });
+        const date = `${year}-${String(month).padStart(2, '0')}-${day}`;
+        const timeMatch = rest.match(/^(\d{1,2}):(\d{2})(?:\s*[-〜~]\s*(\d{1,2}):(\d{2}))?[\s　]+(.+?)\s*$/);
+        if (timeMatch != null) {
+            const startTime = `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}`;
+            const endTime = timeMatch[3] != null ? `${timeMatch[3].padStart(2, '0')}:${timeMatch[4]}` : undefined;
+            events.push({ date, title: timeMatch[5], startTime, endTime });
+        }
+        else {
+            events.push({ date, title: rest });
+        }
     }
     return events;
 }
@@ -236,7 +247,7 @@ function CalendarSummary() {
     events.forEach((e) => {
         var _a;
         eventsByDate[_a = e.date] ?? (eventsByDate[_a] = []);
-        eventsByDate[e.date].push(e.title);
+        eventsByDate[e.date].push(e.startTime != null ? `${e.startTime} ${e.title}` : e.title);
     });
     // 日付ごとのスコアを計算(○:+1, △:+0.5, ×:-1)
     function scoreOf(date) {
