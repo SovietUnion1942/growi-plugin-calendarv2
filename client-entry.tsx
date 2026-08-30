@@ -232,13 +232,20 @@ async function saveMyAvailability(yearMonth: string, username: string, data: Rec
 
 function AvailabilityEditor() {
   const { react } = growiFacade;
-  const { useState, useEffect } = react;
+  const { useState, useEffect, useRef } = react;
 
   const [yearMonth, setYearMonth] = useState(getCurrentYearMonth());
   const [username, setUsername] = useState(null as string | null);
   const [availability, setAvailability] = useState({} as Record<string, string>);
   const [saving, setSaving] = useState(false);
   const [events, setEvents] = useState([] as CalendarEvent[]);
+
+  // ドラッグ塗り(案2)用: 常に最新のavailabilityを参照するためのref
+  // (mouseenterハンドラのクロージャがstateの古い値を掴んでしまうのを防ぐ)
+  const availabilityRef = useRef(availability);
+  availabilityRef.current = availability;
+  const isPaintingRef = useRef(false);
+  const paintValueRef = useRef(undefined as string | undefined);
 
   useEffect(() => {
     getCurrentUsername().then((name: string | null) => setUsername(name));
@@ -262,22 +269,93 @@ function AvailabilityEditor() {
     eventsByDate[e.date].push(e.startTime != null ? `${e.startTime} ${e.title}` : e.title);
   });
 
-  async function toggle(date: string) {
-    if (username == null) return;
-    const current = availability[date];
-    const nextValue =
-      current === undefined ? 'yes' :
+  function nextStateAfter(current: string | undefined): string | undefined {
+    return current === undefined ? 'yes' :
       current === 'yes' ? 'maybe' :
       current === 'maybe' ? 'no' :
       undefined;
+  }
 
-    const next = { ...availability };
-    if (nextValue === undefined) {
+  function applyToDate(date: string, value: string | undefined) {
+    const next = { ...availabilityRef.current };
+    if (value === undefined) {
       delete next[date];
     } else {
-      next[date] = nextValue;
+      next[date] = value;
+    }
+    availabilityRef.current = next;
+    setAvailability(next);
+  }
+
+  async function commitSave() {
+    if (username == null) return;
+    setSaving(true);
+    await saveMyAvailability(yearMonth, username, availabilityRef.current);
+    setSaving(false);
+  }
+
+  // ---- ドラッグ塗り(案2): 押した瞬間の1マス目でクリックと同じサイクルを決め、
+  // ドラッグ中に通過したマスへ同じ値を塗っていく。指を離すまで保存はしない
+  // (1マスずつAPIを叩かず、最後に1回だけ保存)。
+  function startPaint(cell: { date: string; inMonth: boolean }) {
+    if (!cell.inMonth || username == null) return;
+    const value = nextStateAfter(availabilityRef.current[cell.date]);
+    paintValueRef.current = value;
+    isPaintingRef.current = true;
+    applyToDate(cell.date, value);
+  }
+
+  function continuePaint(cell: { date: string; inMonth: boolean }) {
+    if (!isPaintingRef.current || !cell.inMonth) return;
+    applyToDate(cell.date, paintValueRef.current);
+  }
+
+  useEffect(() => {
+    function finishPaint() {
+      if (!isPaintingRef.current) return;
+      isPaintingRef.current = false;
+      commitSave();
+    }
+    window.addEventListener('mouseup', finishPaint);
+    return () => window.removeEventListener('mouseup', finishPaint);
+    // commitSave/yearMonth/username change together; re-registering keeps the
+    // listener's closure pointed at the current month/user.
+  }, [yearMonth, username]);
+
+  // ---- 一括操作(案1・案4) ----
+  async function setAllInMonth(value: string | undefined) {
+    if (username == null) return;
+    const next = { ...availability };
+    for (const week of weeks) {
+      for (const cell of week) {
+        if (!cell.inMonth) continue;
+        if (value === undefined) delete next[cell.date];
+        else next[cell.date] = value;
+      }
+    }
+    availabilityRef.current = next;
+    setAvailability(next);
+    setSaving(true);
+    await saveMyAvailability(yearMonth, username, next);
+    setSaving(false);
+  }
+
+  async function copyFromPreviousMonth() {
+    if (username == null) return;
+    const prevYearMonth = shiftMonth(yearMonth, -1);
+    const prevAvailability = await fetchMyAvailability(prevYearMonth, username);
+
+    const [y, m] = yearMonth.split('-').map(Number);
+    const next: Record<string, string> = {};
+    for (const [date, state] of Object.entries(prevAvailability)) {
+      const day = Number(date.split('-')[2]);
+      const mapped = new Date(y, m - 1, day);
+      // 先月に31日があってもこの月に31日が無い、といったケースはスキップ
+      if (mapped.getMonth() !== m - 1) continue;
+      next[formatDate(mapped)] = state;
     }
 
+    availabilityRef.current = next;
     setAvailability(next);
     setSaving(true);
     await saveMyAvailability(yearMonth, username, next);
@@ -297,7 +375,17 @@ function AvailabilityEditor() {
   height: 'auto',
   boxSizing: 'border-box',
   cursor: 'pointer',
+  userSelect: 'none',
 };
+
+  const bulkButtonStyle = {
+    fontSize: '0.8em',
+    padding: '2px 8px',
+    borderRadius: '4px',
+    border: '1px solid #ccc',
+    background: '#fff',
+    cursor: 'pointer',
+  };
 
   return react.createElement('div', { style: { border: '1px solid #ccc', padding: '1em', borderRadius: '8px', overflowX: 'auto' } },
     react.createElement('div', { style: { minWidth: '480px' } },
@@ -306,6 +394,16 @@ function AvailabilityEditor() {
         react.createElement('button', { onClick: () => setYearMonth(shiftMonth(yearMonth, +1)) }, '>'),
         react.createElement('strong', {}, `${year}年${parseInt(month)}月 の出欠(${username})`),
         saving ? react.createElement('span', { style: { fontSize: '0.8em', color: '#888' } }, '保存中...') : null
+      ),
+      react.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '0.4em', marginBottom: '0.5em' } },
+        react.createElement('button', { style: bulkButtonStyle, onClick: () => setAllInMonth('yes') }, '全部○にする'),
+        react.createElement('button', { style: bulkButtonStyle, onClick: () => setAllInMonth('maybe') }, '全部△にする'),
+        react.createElement('button', { style: bulkButtonStyle, onClick: () => setAllInMonth('no') }, '全部×にする'),
+        react.createElement('button', { style: bulkButtonStyle, onClick: () => setAllInMonth(undefined) }, '全部クリア'),
+        react.createElement('button', { style: bulkButtonStyle, onClick: copyFromPreviousMonth }, '先月と同じにする'),
+      ),
+      react.createElement('p', { style: { fontSize: '0.75em', color: '#888', margin: '0 0 0.5em' } },
+        'マス目はドラッグでまとめて塗れます(押した瞬間のマスの次の状態を、なぞった範囲すべてに適用)'
       ),
       react.createElement('table', { style: { width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' } },
         react.createElement('thead', {},
@@ -340,7 +438,8 @@ function AvailabilityEditor() {
                     outline: hasEvent ? '3px solid #e65100' : 'none',
                     outlineOffset: '-2px',
                   },
-                  onClick: () => cell.inMonth && toggle(cell.date),
+                  onMouseDown: () => startPaint(cell),
+                  onMouseEnter: () => continuePaint(cell),
                 },
                   react.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: '2px' } },
                     hasEvent ? react.createElement('span', { style: { fontSize: '0.7em' } }, '📌') : null,
