@@ -175,6 +175,7 @@ function AvailabilityEditor() {
   const [username, setUsername] = useState(null as string | null);
   const [availability, setAvailability] = useState({} as Record<string, string>);
   const [saving, setSaving] = useState(false);
+  const [events, setEvents] = useState([] as { date: string; title: string }[]);
 
   useEffect(() => {
     getCurrentUsername().then((name: string | null) => setUsername(name));
@@ -185,8 +186,18 @@ function AvailabilityEditor() {
     fetchMyAvailability(yearMonth, username).then(setAvailability);
   }, [yearMonth, username]);
 
+  useEffect(() => {
+    fetchEventsForMonth(yearMonth).then(setEvents);
+  }, [yearMonth]);
+
   const [year, month] = yearMonth.split('-');
   const weeks = getCalendarGrid(yearMonth);
+
+  const eventsByDate: Record<string, string[]> = {};
+  events.forEach((e: { date: string; title: string }) => {
+    eventsByDate[e.date] ??= [];
+    eventsByDate[e.date].push(e.title);
+  });
 
   async function toggle(date: string) {
     if (username == null) return;
@@ -219,10 +230,10 @@ function AvailabilityEditor() {
   verticalAlign: 'top',
   padding: '4px',
   width: '14.28%',
-  height: '75px',
+  minHeight: '75px',
+  height: 'auto',
   boxSizing: 'border-box',
   cursor: 'pointer',
-  overflow: 'hidden',
 };
 
   return react.createElement('div', { style: { border: '1px solid #ccc', padding: '1em', borderRadius: '8px', overflowX: 'auto' } },
@@ -254,14 +265,45 @@ function AvailabilityEditor() {
                   state === 'maybe' ? '△' :
                   state === 'no' ? '×' :
                   null;
+                const dayEvents = eventsByDate[cell.date] ?? [];
+                const hasEvent = dayEvents.length > 0;
 
                 return react.createElement('td', {
                   key: cell.date,
-                  style: { ...cellStyle, background: cell.inMonth ? bg : '#f5f5f5', opacity: cell.inMonth ? 1 : 0.4 },
+                  style: {
+                    ...cellStyle,
+                    background: cell.inMonth ? bg : '#f5f5f5',
+                    opacity: cell.inMonth ? 1 : 0.4,
+                    outline: hasEvent ? '3px solid #e65100' : 'none',
+                    outlineOffset: '-2px',
+                  },
                   onClick: () => cell.inMonth && toggle(cell.date),
                 },
-                  react.createElement('div', { style: { fontWeight: 'bold' } }, cell.day),
-                  label != null ? react.createElement('div', {}, label) : null
+                  react.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: '2px' } },
+                    hasEvent ? react.createElement('span', { style: { fontSize: '0.7em' } }, '📌') : null,
+                    react.createElement('span', { style: { fontWeight: 'bold' } }, cell.day),
+                    label != null ? react.createElement('span', {}, label) : null
+                  ),
+                  react.createElement('div', { style: { maxHeight: '52px', overflowY: 'auto' } },
+                    dayEvents.map((title: string, i: number) =>
+                      react.createElement('div', {
+                        key: i,
+                        style: {
+                          fontSize: '0.65em',
+                          background: '#fff3e0',
+                          color: '#e65100',
+                          fontWeight: 'bold',
+                          border: '1px solid #ffcc80',
+                          borderRadius: '4px',
+                          padding: '1px 3px',
+                          marginTop: '2px',
+                          whiteSpace: 'normal',
+                          wordBreak: 'break-word',
+                          overflowWrap: 'break-word',
+                        },
+                      }, title)
+                    )
+                  )
                 );
               })
             )
