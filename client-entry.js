@@ -3,7 +3,6 @@ const activate = () => {
     console.log('[growi-plugin-calendar] activated!');
     hookMarkdownRenderer();
 };
-// ---- イベントデータ取得・パース ----
 async function fetchAllEvents() {
     const res = await fetch('/_api/v3/pages/list?path=' + encodeURIComponent('/イベント/決定済みイベント保管場所'), { credentials: 'include' });
     const listData = await res.json();
@@ -14,22 +13,70 @@ async function fetchAllEvents() {
     const { page: pageDetail } = await pageRes.json();
     return parseEvents(pageDetail.revision.body);
 }
+// Separator between a start and end time, or between a time and the title
+// when no separating space follows it in the source text (e.g. "16時30分～
+// Zoomで..."). Covers every dash-like character actually seen in real
+// entries: U+301C WAVE DASH (〜), U+FF5E FULLWIDTH TILDE (～), ASCII "~", "-".
+const SEP = '[〜～~-]';
+// Line format: "8月20日 部会" (no time, unchanged), or with a leading time —
+// either "H:MM" or the natural Japanese "H時(M分)?" form actually used on
+// this wiki (e.g. "16時30分～Zoomで...", "8時～9時　同志社国際") — optionally
+// followed by an end time in either form.
+function parseTimeAndTitle(rest) {
+    const colonStart = rest.match(/^(\d{1,2}):(\d{2})/);
+    const kanjiStart = colonStart == null ? rest.match(/^(\d{1,2})時(?:(\d{1,2})分)?/) : null;
+    const start = colonStart ?? kanjiStart;
+    if (start == null)
+        return { title: rest.trim() };
+    const startHour = start[1];
+    const startMin = colonStart != null ? start[2] : (start[2] ?? '00');
+    let cursor = start[0].length;
+    const afterStart = rest.slice(cursor);
+    const colonEnd = afterStart.match(new RegExp(`^\\s*${SEP}\\s*(\\d{1,2}):(\\d{2})`));
+    const kanjiEnd = colonEnd == null
+        ? afterStart.match(new RegExp(`^\\s*${SEP}\\s*(\\d{1,2})時(?:(\\d{1,2})分)?`))
+        : null;
+    const end = colonEnd ?? kanjiEnd;
+    let endHour;
+    let endMin;
+    if (end != null) {
+        endHour = end[1];
+        endMin = colonEnd != null ? end[2] : (end[2] ?? '00');
+        cursor += end[0].length;
+    }
+    // Strip any leftover separator/whitespace between the (start or end) time
+    // and the title — covers both "…分　Title" (spaced) and "…分～Title"
+    // (the separator glued directly to the title, with no end time given).
+    const title = rest
+        .slice(cursor)
+        .replace(new RegExp(`^[\\s　]*${SEP}?[\\s　]*`), '')
+        .trim();
+    return {
+        startTime: `${startHour.padStart(2, '0')}:${startMin}`,
+        endTime: endHour != null ? `${endHour.padStart(2, '0')}:${endMin}` : undefined,
+        title,
+    };
+}
 function parseEvents(body) {
     const now = new Date();
     let year = now.getFullYear();
     let lastMonth = 0;
     const events = [];
     for (const line of body.split('\n')) {
-        const match = line.match(/^\s*(\d{1,2})月(\d{1,2})日[\s　]+(.+?)\s*$/);
-        if (match == null)
+        const dateMatch = line.match(/^\s*(\d{1,2})月(\d{1,2})日[\s　]+(.+?)\s*$/);
+        if (dateMatch == null)
             continue;
-        const month = parseInt(match[1], 10);
-        const day = match[2].padStart(2, '0');
-        const title = match[3];
+        const month = parseInt(dateMatch[1], 10);
+        const day = dateMatch[2].padStart(2, '0');
+        const rest = dateMatch[3];
         if (month < lastMonth)
             year += 1;
         lastMonth = month;
-        events.push({ date: `${year}-${String(month).padStart(2, '0')}-${day}`, title });
+        const date = `${year}-${String(month).padStart(2, '0')}-${day}`;
+        const { startTime, endTime, title } = parseTimeAndTitle(rest);
+        if (title.length === 0)
+            continue;
+        events.push({ date, title, startTime, endTime });
     }
     return events;
 }
@@ -236,7 +283,7 @@ function CalendarSummary() {
     events.forEach((e) => {
         var _a;
         eventsByDate[_a = e.date] ?? (eventsByDate[_a] = []);
-        eventsByDate[e.date].push(e.title);
+        eventsByDate[e.date].push(e.startTime != null ? `${e.startTime} ${e.title}` : e.title);
     });
     // 日付ごとのスコアを計算(○:+1, △:+0.5, ×:-1)
     function scoreOf(date) {
